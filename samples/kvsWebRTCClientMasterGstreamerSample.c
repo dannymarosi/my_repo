@@ -155,7 +155,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
             }
             else {
                 pipeline = gst_parse_launch(
-                        "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
+                        "rpicamsrc rotation=270 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! omxh264enc control-rate=1 target-bitrate=5120000 periodicity-idr=30 inline-header=FALSE ! h264parse config-interval=-1 ! "
                         "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
                         &error);
             }
