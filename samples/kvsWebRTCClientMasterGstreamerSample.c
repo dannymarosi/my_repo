@@ -1,10 +1,22 @@
 #include "Samples.h"
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
+const char KVS_STREAMER_REV[] = "001";
+/*********************************************************************************************
+Revision History:
+Rev.      By   Date      Change Description
+--------  ---  --------  ---------------------------------------------------------------------
+ 001  DM   05/04/2020
+ Action:
+ a. Modify pipe line:
+    Enable audio and video recording into mkv file 
+	Use rpicamssrc element
+	Use hardware accelerated video encoding omxh264enc element 
+*********************************************************************************************/
 
 extern PSampleConfiguration gSampleConfiguration;
 
-// #define VERBOSE
+//#define VERBOSE
 
 GstFlowReturn on_new_sample(GstElement *sink, gpointer data, UINT64 trackid)
 {
@@ -154,10 +166,10 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                      &error);
             }
             else {
-                pipeline = gst_parse_launch(
-                        "rpicamsrc rotation=270 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! omxh264enc control-rate=1 target-bitrate=5120000 periodicity-idr=30 inline-header=FALSE ! h264parse config-interval=-1 ! "
-                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
-                        &error);
+			pipeline = gst_parse_launch("rpicamsrc rotation=270 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=25/1 ! omxh264enc control-rate=2 target-bitrate=5120000 periodicity-idr=30 inline-header=FALSE ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! tee name=t ! queue ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
+			 "t. ! queue ! h264parse ! mux. "
+			 "alsasrc device=hw:1,0 ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! queue ! voaacenc ! mux. "
+			 "matroskamux name=mux ! filesink location=test.mkv ", &error); 
             }
             break;
 
@@ -449,8 +461,8 @@ CleanUp:
         ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, TRUE);
 
         if (pSampleConfiguration->videoSenderTid != (UINT64) NULL) {
-            // Join the threads
-            THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
+           // Join the threads
+//            THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
         }
 
         retStatus = freeSignalingClient(&pSampleConfiguration->signalingClientHandle);
@@ -464,5 +476,8 @@ CleanUp:
         }
     }
     printf("[KVS Gstreamer Master] Cleanup done\n");
+	char str_temp[32];
+	sprintf(str_temp, "KVS_STREAMER_REV=%s\n", KVS_STREAMER_REV);
+    printf(str_temp);
     return (INT32) retStatus;
 }
