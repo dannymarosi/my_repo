@@ -1,11 +1,28 @@
 #include "Samples.h"
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
-const char KVS_STREAMER_REV[] = "001";
+const char KVS_STREAMER_REV[] = "002";
 /*********************************************************************************************
 Revision History:
 Rev.      By   Date      Change Description
 --------  ---  --------  ---------------------------------------------------------------------
+ 002  DM   05/03/2020
+ Action:
+ a. Enable saving stream to file on startup add startSenderMediaThreads() in common.c.
+ b. Change pipeline to enable saving to mp4 file (omxh264enc element is removed).
+ c. Add gst_app_src_end_of_stream()
+ Problem:
+ b. EOS is not sent when we close the application. therefore the mp4 file is not closed properly.
+
+	When you press ctrl+c the source element does not push an EOS event to the downstream elements,
+	the pipeline is simply shut down. The muxer needs to receive an EOS event to know that the data
+	streaming has ended and properly finish the mp4 file (like seeking back to the start of the file
+	to rewrite some fields that he coudn't write back at the start).
+	if you use '-e' option in gst-launch it forces an EOS at the pipeline when ctrl+c is pressed and all should work fine.
+    http://gstreamer-devel.966125.n4.nabble.com/My-H-264-encoder-cound-not-work-well-with-the-MP4-muxer-td973490i20.html#a973502
+ Action:
+ b. Save the file into mkv format for now until we have solution for EOS issue
+
  001  DM   05/04/2020
  Action:
  a. Modify pipe line:
@@ -166,10 +183,12 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                      &error);
             }
             else {
-			pipeline = gst_parse_launch("rpicamsrc rotation=270 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=25/1 ! omxh264enc control-rate=2 target-bitrate=5120000 periodicity-idr=30 inline-header=FALSE ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! tee name=t ! queue ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
-			 "t. ! queue ! h264parse ! mux. "
-			 "alsasrc device=hw:1,0 ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! queue ! voaacenc ! mux. "
-			 "matroskamux name=mux ! filesink location=test.mkv ", &error); 
+			/*Use rpicamsrc element as source. Save stream and audio into a file*/
+			pipeline = gst_parse_launch("rpicamsrc rotation=270 ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline,width=640,height=480,framerate=30/1 ! tee name=t ! queue ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
+			 "t. ! queue ! h264parse config-interval=-1 ! mux. "
+			 "alsasrc device=hw:1,0 do-timestamp=true ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! queue ! voaacenc ! mux. "
+			 "matroskamux name=mux ! filesink location=test.mkv", &error);
+             //"mp4mux name=mux ! filesink location=test.mp4"
             }
             break;
 
@@ -389,12 +408,13 @@ INT32 main(INT32 argc, CHAR *argv[])
         printf("[KVS Gstreamer Master] Streaming video only\n");
     }
 
-    if(argc > 3) {
-        if (STRCMP(argv[3], "testsrc") == 0) {
-            printf("[KVS GStreamer Master] Using test source in GStreamer\n");
-            pSampleConfiguration->useTestSrc = TRUE;
-        }
-    }
+//    if(argc > 3) {
+//        if (STRCMP(argv[3], "testsrc") == 0) {
+//            printf("[KVS GStreamer Master] Using test source in GStreamer\n");
+//            pSampleConfiguration->useTestSrc = TRUE;
+//        }
+//    }
+
 
     switch (pSampleConfiguration->mediaType) {
         case SAMPLE_STREAMING_VIDEO_ONLY:
@@ -432,6 +452,12 @@ INT32 main(INT32 argc, CHAR *argv[])
         goto CleanUp;
     }
     printf("[KVS GStreamer Master] Signaling client connection to socket established\n");
+
+    if (argc > 3) {
+        // Enabling persistence if the second argument is supplied with the stream name
+        printf("[KVS Master] Streaming to KVS stream %s\n", argv[3]);
+        CHK_STATUS(startSenderMediaThreads(pSampleConfiguration));
+    }
 
     printf("[KVS Gstreamer Master] Beginning streaming...check the stream over channel %s\n",
             (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));

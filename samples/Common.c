@@ -253,6 +253,32 @@ CleanUp:
     return retStatus;
 }
 
+STATUS startSenderMediaThreads(PSampleConfiguration pSampleConfiguration)
+{
+    STATUS retStatus = STATUS_SUCCESS;
+
+    CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
+
+    if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted)) {
+        ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, TRUE);
+        if (pSampleConfiguration->videoSource != NULL) {
+            THREAD_CREATE(&pSampleConfiguration->videoSenderTid, pSampleConfiguration->videoSource,
+                          (PVOID) pSampleConfiguration);
+        }
+
+        if (pSampleConfiguration->audioSource != NULL) {
+            THREAD_CREATE(&pSampleConfiguration->audioSenderTid, pSampleConfiguration->audioSource,
+                          (PVOID) pSampleConfiguration);
+        }
+    }
+
+CleanUp:
+
+    CHK_LOG_ERR(retStatus);
+
+    return retStatus;
+}
+
 STATUS respondWithAnswer(PSampleStreamingSession pSampleStreamingSession)
 {
     STATUS retStatus = STATUS_SUCCESS;
