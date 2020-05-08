@@ -1,11 +1,25 @@
 #include "Samples.h"
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
-const char KVS_STREAMER_REV[] = "002";
+const char KVS_STREAMER_REV[] = "003";
 /*********************************************************************************************
 Revision History:
 Rev.      By   Date      Change Description
 --------  ---  --------  ---------------------------------------------------------------------
+ 003  DM   05/07/2020
+ Problem:
+ a. Unable to play mp4 file because it is not closed properly.
+ Observation:
+ a. Pipeline need EOS (End Of Stream) signal to close mp4 file properly
+    Fail to link when Common.c calling function defined in kvsWebRTCClientMasterGstreamerSample.c
+ Action:
+ a. Create send_eos(). assign send_eos() address to function pinter *fun_ptr.
+    use *fun_ptr to call the function form Common.c
+ b. Clean compiler warnings
+ c. Uncomment THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL)
+ d. Remove requirement for third parameter (i.e. ./kvsWebrtcClientMasterGstSample TEST_1918 is sufficient).
+ e. store video file at /home/pi/Videos/cb_kvs.mp4
+
  002  DM   05/03/2020
  Action:
  a. Enable saving stream to file on startup add startSenderMediaThreads() in common.c.
@@ -32,6 +46,7 @@ Rev.      By   Date      Change Description
 *********************************************************************************************/
 
 extern PSampleConfiguration gSampleConfiguration;
+GstElement *pipeline = NULL;/*global pipeline to support send_eos()*/
 
 //#define VERBOSE
 
@@ -149,7 +164,7 @@ GstFlowReturn on_new_sample_audio(GstElement *sink, gpointer data) {
 PVOID sendGstreamerAudioVideo(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    GstElement *appsinkVideo = NULL, *appsinkAudio = NULL, *pipeline = NULL;
+    GstElement *appsinkVideo = NULL, *appsinkAudio = NULL;
     GstBus *bus;
     GstMessage *msg;
     GError *error = NULL;
@@ -187,8 +202,9 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 			pipeline = gst_parse_launch("rpicamsrc rotation=270 ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline,width=640,height=480,framerate=30/1 ! tee name=t ! queue ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
 			 "t. ! queue ! h264parse config-interval=-1 ! mux. "
 			 "alsasrc device=hw:1,0 do-timestamp=true ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! queue ! voaacenc ! mux. "
-			 "matroskamux name=mux ! filesink location=test.mkv", &error);
+			 "mp4mux name=mux ! filesink location=/home/pi/Videos/cb_kvs.mp4", &error);
              //"mp4mux name=mux ! filesink location=test.mp4"
+             //"matroskamux name=mux ! filesink location=test.mkv"
             }
             break;
 
@@ -252,14 +268,14 @@ CleanUp:
         g_clear_error (&error);
     }
 
-    return (PVOID) (ULONG_PTR) retStatus;
+    return (PVOID) (UINT_PTR) retStatus;
 }
 
 VOID onGstAudioFrameReady(UINT64 customData, PFrame pFrame)
 {
     GstFlowReturn ret;
     GstBuffer *buffer;
-    GstElement *appsrcAudio = (GstElement *) customData;
+    GstElement *appsrcAudio = (GstElement *)(UINT32)customData;
 
     /* Create a new empty buffer */
     buffer = gst_buffer_new_and_alloc(pFrame->size);
@@ -275,7 +291,7 @@ VOID onGstAudioFrameReady(UINT64 customData, PFrame pFrame)
 VOID onSampleStreamingSessionShutdown(UINT64 customData, PSampleStreamingSession pSampleStreamingSession)
 {
     (void)(pSampleStreamingSession);
-    GstElement *appsrc = (GstElement *) customData;
+    GstElement *appsrc = (GstElement *)(UINT32)customData;
     GstFlowReturn ret;
 
     g_signal_emit_by_name (appsrc, "end-of-stream", &ret);
@@ -322,10 +338,10 @@ PVOID receiveGstreamerAudioVideo(PVOID args)
     }
 
     transceiverOnFrame(pSampleStreamingSession->pAudioRtcRtpTransceiver,
-                       (UINT64) appsrcAudio,
+                       (UINT32) appsrcAudio,
                        onGstAudioFrameReady);
 
-    retStatus = streamingSessionOnShutdown(pSampleStreamingSession, (UINT64) appsrcAudio, onSampleStreamingSessionShutdown);
+    retStatus = streamingSessionOnShutdown(pSampleStreamingSession, (UINT32) appsrcAudio, onSampleStreamingSessionShutdown);
     if(retStatus != STATUS_SUCCESS) {
         printf("[KVS GStreamer Master] streamingSessionOnShutdown(): operation returned status code: 0x%08x \n", STATUS_INTERNAL_ERROR);
         goto CleanUp;
@@ -358,7 +374,7 @@ CleanUp:
         g_clear_error (&error);
     }
 
-    return (PVOID) (ULONG_PTR) retStatus;
+    return (PVOID) (UINT_PTR) retStatus;
 }
 
 INT32 main(INT32 argc, CHAR *argv[])
@@ -386,8 +402,9 @@ INT32 main(INT32 argc, CHAR *argv[])
     pSampleConfiguration->videoSource = sendGstreamerAudioVideo;
     pSampleConfiguration->mediaType = SAMPLE_STREAMING_VIDEO_ONLY;
     pSampleConfiguration->receiveAudioVideoSource = receiveGstreamerAudioVideo;
+    pSampleConfiguration->fun_ptr = send_eos;/*assign function address to fun_ptr*/
     pSampleConfiguration->onDataChannel = onDataChannel;
-    pSampleConfiguration->customData = (UINT64) pSampleConfiguration;
+    pSampleConfiguration->customData = (UINT32) pSampleConfiguration;
     pSampleConfiguration->useTestSrc = FALSE;
     /* Initialize GStreamer */
     gst_init(&argc, &argv);
@@ -453,11 +470,9 @@ INT32 main(INT32 argc, CHAR *argv[])
     }
     printf("[KVS GStreamer Master] Signaling client connection to socket established\n");
 
-    if (argc > 3) {
-        // Enabling persistence if the second argument is supplied with the stream name
-        printf("[KVS Master] Streaming to KVS stream %s\n", argv[3]);
-        CHK_STATUS(startSenderMediaThreads(pSampleConfiguration));
-    }
+    /*open the pipeline to enable saving setream to file on application start*/
+    printf("[KVS Master] Streaming to KVS stream %s\n", argv[3]);
+    CHK_STATUS(startSenderMediaThreads(pSampleConfiguration));
 
     printf("[KVS Gstreamer Master] Beginning streaming...check the stream over channel %s\n",
             (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
@@ -486,9 +501,9 @@ CleanUp:
         // Kick of the termination sequence
         ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, TRUE);
 
-        if (pSampleConfiguration->videoSenderTid != (UINT64) NULL) {
+        if (pSampleConfiguration->videoSenderTid != (UINT32) NULL) {
            // Join the threads
-//            THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
+            THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
         }
 
         retStatus = freeSignalingClient(&pSampleConfiguration->signalingClientHandle);
@@ -506,4 +521,10 @@ CleanUp:
 	sprintf(str_temp, "KVS_STREAMER_REV=%s\n", KVS_STREAMER_REV);
     printf(str_temp);
     return (INT32) retStatus;
+}
+
+void send_eos(void)
+{
+	printf("\n[KVS GStreamer Master] Send EOS to pipeline \n");
+	gst_element_send_event (pipeline, gst_event_new_eos());
 }

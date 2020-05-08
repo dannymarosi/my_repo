@@ -7,6 +7,7 @@ VOID sigintHandler(INT32 sigNum)
 {
     UNUSED_PARAM(sigNum);
     if (gSampleConfiguration != NULL) {
+		(*gSampleConfiguration->fun_ptr)();//call the function
         ATOMIC_STORE_BOOL(&gSampleConfiguration->interrupted, TRUE);
         CVAR_BROADCAST(gSampleConfiguration->cvar);
     }

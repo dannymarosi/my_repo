@@ -66,6 +66,7 @@ typedef struct {
     UINT32 streamingSessionCount;
     SignalingClientCallbacks signalingClientCallbacks;
     SignalingClientInfo clientInfo;
+	void (*fun_ptr)(void);/*function definition*/
 } SampleConfiguration, *PSampleConfiguration;
 
 typedef VOID (*StreamSessionShutdownCallback)(UINT64, PSampleStreamingSession);
@@ -117,6 +118,7 @@ VOID sampleBandwidthEstimationHandler(UINT64, DOUBLE);
 VOID onDataChannel(UINT64, PRtcDataChannel);
 VOID onConnectionStateChange(UINT64, RTC_PEER_CONNECTION_STATE);
 STATUS sessionCleanupWait(PSampleConfiguration);
+void send_eos(void);
 
 #ifdef  __cplusplus
 }
