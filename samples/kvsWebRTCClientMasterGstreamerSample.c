@@ -1,11 +1,19 @@
 #include "Samples.h"
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
-const char KVS_STREAMER_REV[] = "003";
+const char KVS_STREAMER_REV[] = "004";
 /*********************************************************************************************
 Revision History:
 Rev.      By   Date      Change Description
 --------  ---  --------  ---------------------------------------------------------------------
+ 004  DM   05/13/2020
+ Problem:
+ a. Viewer fail to receive video through cellular.
+ Observation:
+ a. MP4 file bit rate is 1.3Mbs
+ Action:
+ a. Change rpicamsrce bit rate from default 17Mbs to 1.3Mbs
+ 
  003  DM   05/07/2020
  Problem:
  a. Unable to play mp4 file because it is not closed properly.
@@ -199,7 +207,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
             }
             else {
 			/*Use rpicamsrc element as source. Save stream and audio into a file*/
-			pipeline = gst_parse_launch("rpicamsrc rotation=270 ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline,width=640,height=480,framerate=30/1 ! tee name=t ! queue ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
+			pipeline = gst_parse_launch("rpicamsrc rotation=270 bitrate=1300000 ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline,width=640,height=480,framerate=30/1 ! tee name=t ! queue ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
 			 "t. ! queue ! h264parse config-interval=-1 ! mux. "
 			 "alsasrc device=hw:1,0 do-timestamp=true ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! queue ! voaacenc ! mux. "
 			 "mp4mux name=mux ! filesink location=/home/pi/Videos/cb_kvs.mp4", &error);
@@ -435,10 +443,10 @@ INT32 main(INT32 argc, CHAR *argv[])
 
     switch (pSampleConfiguration->mediaType) {
         case SAMPLE_STREAMING_VIDEO_ONLY:
-            printf("[KVS GStreamer Master] streaming type video-only");
+            printf("[KVS GStreamer Master] streaming type video-only\n");
             break;
         case SAMPLE_STREAMING_AUDIO_VIDEO:
-            printf("[KVS GStreamer Master] streaming type audio-video");
+            printf("[KVS GStreamer Master] streaming type audio-video\n");
             break;
     }
 
