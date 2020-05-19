@@ -1,11 +1,15 @@
 #include "Samples.h"
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
-const char KVS_STREAMER_REV[] = "004";
+const char KVS_STREAMER_REV[] = "005";
 /*********************************************************************************************
 Revision History:
 Rev.      By   Date      Change Description
 --------  ---  --------  ---------------------------------------------------------------------
+ 005  DM   05/19/2020
+ Action:
+ a. Rename video file from cb_kvs to cb_vid.mp4
+ 
  004  DM   05/13/2020
  Problem:
  a. Viewer fail to receive video through cellular.
@@ -210,7 +214,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 			pipeline = gst_parse_launch("rpicamsrc rotation=270 bitrate=1300000 ! h264parse config-interval=-1 ! video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline,width=640,height=480,framerate=30/1 ! tee name=t ! queue ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
 			 "t. ! queue ! h264parse config-interval=-1 ! mux. "
 			 "alsasrc device=hw:1,0 do-timestamp=true ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! queue ! voaacenc ! mux. "
-			 "mp4mux name=mux ! filesink location=/home/pi/Videos/cb_kvs.mp4", &error);
+			 "mp4mux name=mux ! filesink location=/home/pi/Videos/cb_vid.mp4", &error);
              //"mp4mux name=mux ! filesink location=test.mp4"
              //"matroskamux name=mux ! filesink location=test.mkv"
             }
